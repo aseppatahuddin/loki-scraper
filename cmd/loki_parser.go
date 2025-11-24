@@ -8,15 +8,14 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"strings"
 	"time"
 )
 
 type LogEntry struct {
-	Timestamp string    `json:"timestamp"`
-	Log       string    `json:"log"`
-	Stream    string    `json:"stream"`
-	Time      time.Time `json:"time"`
+	Timestamp string    `json:"timestamp" ch:"timestamp"`
+	Log       string    `json:"log" ch:"log"`
+	Stream    string    `json:"stream" ch:"stream"`
+	Time      time.Time `json:"time" ch:"time"`
 }
 
 // Define structs to match Loki API response
@@ -88,7 +87,7 @@ func lokiParser(ctx context.Context, query string, startDate string, endDate str
 	// on success, formating data
 	if lokiResp.Status == "success" {
 		for i, stream := range lokiResp.Data.Result {
-			log.Printf("Stream Labels: %v\n", stream.Stream)
+			// log.Printf("Stream Labels: %v\n", stream.Stream)
 			for _, entry := range stream.RawValues {
 				timestamp, logLine := entry[0], entry[1]
 
@@ -109,17 +108,33 @@ func lokiParser(ctx context.Context, query string, startDate string, endDate str
 		return fmt.Errorf("loki API error: %s", lokiResp.Status)
 	}
 
-	log.Println("============= Save data to Clickhouse here =============")
+	conn, err := connect()
+	if err != nil {
+		log.Panicln("Error DB connection: ", err.Error())
+	}
+
+	// Prepare the batch insert statement
+	batch, err := conn.PrepareBatch(context.Background(), "INSERT INTO log_entry (timestamp, log, stream, time)")
+	if err != nil {
+		log.Fatal("Error on prepare batch: ", err.Error())
+	}
+	defer batch.Close()
+
 	for _, results := range lokiResp.Data.Result {
 		for _, structedData := range results.StructedValues {
-			log.Println("============= Data Pack =============")
-			log.Println("Data ID:", structedData.Timestamp)
-			log.Println("Data Time:", structedData.Time)
-			log.Println("Data Log:", strings.ReplaceAll(structedData.Log, "\n", ""))
-			log.Println("Data Stream:", structedData.Stream)
-			log.Println("============= Data Pack =============")
+			err := batch.AppendStruct(&structedData) // Use AppendStruct for struct-based insertion
+			if err != nil {
+				log.Fatal("Failed to append structued data: ", err.Error())
+			}
 		}
 	}
+
+	// Send the batch
+	if err := batch.Send(); err != nil {
+		log.Fatal(err)
+	}
+
+	log.Println("Successfully inserted data.")
 
 	return nil
 }

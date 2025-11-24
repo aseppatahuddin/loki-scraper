@@ -2,15 +2,11 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"os"
-	"os/signal"
-	"syscall"
 	"time"
 )
 
-var currentState string
 var startDate string
 var endDate string
 
@@ -29,16 +25,6 @@ func dateParse(date string) (time.Time, error) {
 }
 
 func main() {
-	// Use a context with a timeout of 10 seconds:
-	appContext, appCancelContext := context.WithTimeout(context.Background(), 10*time.Second)
-	// Use simple context based on OS:
-	// appContext := context.Background()
-
-	// add HTTP controller if need it, can be used to:
-	// - Start
-	// - Stop
-	// httpServer()
-
 	// set extra query to fetch loki data
 	startDate = os.Getenv("LOKI_START_DATE")
 	if startDate == "" {
@@ -67,27 +53,12 @@ func main() {
 	var lokiStartDate = start.Format(time.RFC3339Nano)
 	var lokiEndDate = end.Format(time.RFC3339Nano)
 
-	done := make(chan os.Signal, 1)
-	signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 	log.Println("Starting loki scrapper")
-	go func() {
-		err := lokiParser(appContext, lokiQuery, lokiStartDate, lokiEndDate)
-		if err != nil {
-			log.Printf("Error running loki parser: %v\n", err)
-		} else {
-			log.Println("Scraper command executed successfully.")
-		}
-	}()
-
-	select {
-	case <-done:
-		fmt.Println("Received interrupt signal. Stopping command...")
-		appCancelContext()
-	case err := <-done:
-		if err != nil {
-			log.Printf("Error running loki scraper: %v\n", err)
-		} else {
-			log.Println("loki scraper command executed successfully.")
-		}
+	// go func() {
+	err = lokiParser(context.Background(), lokiQuery, lokiStartDate, lokiEndDate)
+	if err != nil {
+		log.Printf("Error running loki parser: %v\n", err)
+	} else {
+		log.Println("Scraper command executed successfully.")
 	}
 }

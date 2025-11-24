@@ -13,4 +13,4 @@ export CLICKHOUSE_DATABASE="loki_log"
 export CLICKHOUSE_USER="default"
 export CLICKHOUSE_PASSWORD="default"
 
-go run cmd/*.go
+./loki-scraper
