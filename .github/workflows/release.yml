@@ -37,9 +37,7 @@ jobs:
 
       - uses: wangyoucao577/go-release-action@v1.53
         env:
-          GOPRIVATE: github.com/{organisation}
           RELEASE_TAG: ${{ env.RELEASE_TAG }}
-          NETRC: ${{ secrets.GH_PAT }}
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           md5sum: false
