@@ -8,8 +8,16 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
+
+type LogEntry struct {
+	Timestamp string    `json:"timestamp"`
+	Log       string    `json:"log"`
+	Stream    string    `json:"stream"`
+	Time      time.Time `json:"time"`
+}
 
 // Define structs to match Loki API response
 type LokiResponse struct {
@@ -17,8 +25,9 @@ type LokiResponse struct {
 	Data   struct {
 		ResultType string `json:"resultType"`
 		Result     []struct {
-			Stream map[string]string `json:"stream"`
-			Values [][]string        `json:"values"`
+			Stream         map[string]string `json:"stream"`
+			RawValues      [][]string        `json:"values"`
+			StructedValues []LogEntry        `json:"log"`
 		} `json:"result"`
 	} `json:"data"`
 }
@@ -63,6 +72,8 @@ func lokiParser(ctx context.Context, query string, startDate string, endDate str
 		return fmt.Errorf("loki API returned non-OK status: %s", resp.Status)
 	}
 
+	log.Println("Start to receiving loki data from URL ", req.URL.String())
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return fmt.Errorf("error reading response body %s", err.Error())
@@ -74,16 +85,40 @@ func lokiParser(ctx context.Context, query string, startDate string, endDate str
 		return fmt.Errorf("error unmarshaling JSON: %s", err.Error())
 	}
 
+	// on success, formating data
 	if lokiResp.Status == "success" {
-		for _, stream := range lokiResp.Data.Result {
+		for i, stream := range lokiResp.Data.Result {
 			log.Printf("Stream Labels: %v\n", stream.Stream)
-			for _, entry := range stream.Values {
+			for _, entry := range stream.RawValues {
 				timestamp, logLine := entry[0], entry[1]
-				log.Printf("  Timestamp: %s, Log Line: %s\n", timestamp, logLine)
+
+				var structedJson LogEntry
+				err := json.Unmarshal([]byte(logLine), &structedJson)
+				if err != nil {
+					return fmt.Errorf("parsing loki log error: %s", err.Error())
+				}
+
+				// add log ID from timestamp
+				structedJson.Timestamp = timestamp
+
+				// push to structed json
+				lokiResp.Data.Result[i].StructedValues = append(lokiResp.Data.Result[i].StructedValues, structedJson)
 			}
 		}
 	} else {
 		return fmt.Errorf("loki API error: %s", lokiResp.Status)
+	}
+
+	log.Println("============= Save data to Clickhouse here =============")
+	for _, results := range lokiResp.Data.Result {
+		for _, structedData := range results.StructedValues {
+			log.Println("============= Data Pack =============")
+			log.Println("Data ID:", structedData.Timestamp)
+			log.Println("Data Time:", structedData.Time)
+			log.Println("Data Log:", strings.ReplaceAll(structedData.Log, "\n", ""))
+			log.Println("Data Stream:", structedData.Stream)
+			log.Println("============= Data Pack =============")
+		}
 	}
 
 	return nil

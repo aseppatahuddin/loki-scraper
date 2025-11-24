@@ -1,9 +1,10 @@
 #!/bin/bash
 
-# export LOKI_URL="https://pawon-beta.terpusat.com/api/v1/query_range"
-# export LOKI_QUERY="{job=\"my-app\"}"
-# export LOKI_START_DATE="2025-01-01 00:00:00"
-# export LOKI_END_DATE="2025-01-30 00:00:00"
-# export LOKI_LIMIT="100"
+# http://127.0.0.1:3100/loki/api/v1/query_range
+export LOKI_URL="http://127.0.0.1:3100/loki/api/v1/query_range"
+export LOKI_QUERY="{container=\"splp-gw\"}"
+export LOKI_START_DATE="2025-11-01 00:00:00"
+export LOKI_END_DATE="2025-11-22 00:00:00"
+export LOKI_LIMIT="100"
 
 go run cmd/*.go
