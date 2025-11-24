@@ -9,14 +9,13 @@ jobs:
   releases-matrix:
     name: Release Matrix
     runs-on: ubuntu-latest
+    permissions:
+          contents: write # Essential for creating releases
     strategy:
       matrix:
-        # https://gist.github.com/asukakenji/f15ba7e588ac42795f421b48b8aede63
-        # Notes: Im not sure the architecture target 
         goos: [linux]
         goarch: ["386", "arm", "amd64", "arm64"]
         exclude:
-          # windows/386 and darwin/386 seems useless
           - goarch: arm
             goos: darwin
           - goarch: "386"
@@ -36,8 +35,6 @@ jobs:
       - uses: actions/checkout@v5
 
       - uses: wangyoucao577/go-release-action@v1.53
-        env:
-          RELEASE_TAG: ${{ env.RELEASE_TAG }}
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           md5sum: false
