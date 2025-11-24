@@ -8,14 +8,68 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
+
+	"dario.cat/mergo"
 )
+
+type ExtendedLogEntry struct {
+	APIName                  string `json:"apiName" ch:"apiName"`
+	ProxyResponseCode        string `json:"proxyResponseCode" ch:"proxyResponseCode"`
+	Destination              string `json:"destination" ch:"destination"`
+	APICreatorTenantDomain   string `json:"apiCreatorTenantDomain" ch:"apiCreatorTenantDomain"`
+	Platform                 string `json:"platform" ch:"platform"`
+	APIMethod                string `json:"apiMethod" ch:"apiMethod"`
+	APIVersion               string `json:"apiVersion" ch:"apiVersion"`
+	GatewayType              string `json:"gatewayType" ch:"gatewayType"`
+	APICreator               string `json:"apiCreator" ch:"apiCreator"`
+	ResponseCacheHit         string `json:"responseCacheHit" ch:"responseCacheHit"`
+	BackendLatency           string `json:"backendLatency" ch:"backendLatency"`
+	CorrelationID            string `json:"correlationId" ch:"correlationId"`
+	RequestMediationLatency  string `json:"requestMediationLatency" ch:"requestMediationLatency"`
+	KeyType                  string `json:"keyType" ch:"keyType"`
+	APIID                    string `json:"apiId" ch:"apiId"`
+	ApplicationName          string `json:"applicationName" ch:"applicationName"`
+	TargetResponseCode       string `json:"targetResponseCode" ch:"targetResponseCode"`
+	RequestTimestamp         string `json:"requestTimestamp" ch:"requestTimestamp"`
+	ApplicationOwner         string `json:"applicationOwner" ch:"applicationOwner"`
+	UserAgent                string `json:"userAgent" ch:"userAgent"`
+	EventType                string `json:"eventType" ch:"eventType"`
+	APIResourceTemplate      string `json:"apiResourceTemplate" ch:"apiResourceTemplate"`
+	RegionID                 string `json:"regionId" ch:"regionId"`
+	ResponseLatency          string `json:"responseLatency" ch:"responseLatency"`
+	ResponseMediationLatency string `json:"responseMediationLatency" ch:"responseMediationLatency"`
+	UserIP                   string `json:"userIp" ch:"userIp"`
+	APIContext               string `json:"apiContext" ch:"apiContext"`
+	ApplicationID            string `json:"applicationId" ch:"applicationId"`
+	APIType                  string `json:"apiType" ch:"apiType"`
+}
 
 type LogEntry struct {
 	Timestamp string    `json:"timestamp" ch:"timestamp"`
-	Log       string    `json:"log" ch:"log"`
+	Job       string    `json:"job" ch:"job"`
+	Namespace string    `json:"namespace" ch:"namespace"`
+	NodeName  string    `json:"node_name" ch:"node_name"`
+	Pod       string    `json:"pod" ch:"pod"`
+	App       string    `json:"app" ch:"app"`
+	Container string    `json:"container" ch:"container"`
+	Filename  string    `json:"filename" ch:"filename"`
+	Log       string    `json:"log"` // Skip raw data from clickhouse (hemat bebz...)
 	Stream    string    `json:"stream" ch:"stream"`
 	Time      time.Time `json:"time" ch:"time"`
+	// extra data
+	ExtendedLogEntry
+}
+
+type LokiStreamResponseChild struct {
+	App       string `json:"app"`
+	Container string `json:"container"`
+	Filename  string `json:"filename"`
+	Job       string `json:"job"`
+	Namespace string `json:"namespace"`
+	NodeName  string `json:"node_name"`
+	Pod       string `json:"pod"`
 }
 
 // Define structs to match Loki API response
@@ -24,9 +78,9 @@ type LokiResponse struct {
 	Data   struct {
 		ResultType string `json:"resultType"`
 		Result     []struct {
-			Stream         map[string]string `json:"stream"`
-			RawValues      [][]string        `json:"values"`
-			StructedValues []LogEntry        `json:"log"`
+			Stream         LokiStreamResponseChild `json:"stream"`
+			RawValues      [][]string              `json:"values"`
+			StructedValues []LogEntry              `json:"log"`
 		} `json:"result"`
 	} `json:"data"`
 }
@@ -97,11 +151,48 @@ func lokiParser(ctx context.Context, query string, startDate string, endDate str
 					return fmt.Errorf("parsing loki log error: %s", err.Error())
 				}
 
-				// add log ID from timestamp
-				structedJson.Timestamp = timestamp
+				if containsAny(structedJson.Log) {
+					log.Println("structedJson.LogstructedJson.Log")
+					log.Println(structedJson.Log)
+					log.Println("structedJson.LogstructedJson.Log")
+					// cleanup log and filter parsing metrics
+					whitespaceClean := strings.Join(strings.Fields(structedJson.Log), " ")
+					rawArrayString := strings.Split(whitespaceClean, "Value:")
+					var metricsValue string
+					if len(rawArrayString) == 2 {
+						metricsValue = strings.TrimSpace(rawArrayString[1])
 
-				// push to structed json
-				lokiResp.Data.Result[i].StructedValues = append(lokiResp.Data.Result[i].StructedValues, structedJson)
+						fmt.Println("metricsValuemetricsValuemetricsValue")
+						fmt.Println(metricsValue)
+						fmt.Println("metricsValuemetricsValuemetricsValue")
+
+						metric, err := ConvertToApiLog(metricsValue)
+						if err != nil {
+							log.Panicln(err.Error())
+						}
+
+						log.Printf("Data App ID: %s", metric.APIID)
+						log.Printf("Data Application ID: %s", metric.ApplicationID)
+						log.Printf("Data User Agent: %s", metric.UserAgent)
+						log.Printf("Data User IP: %s", metric.UserIP)
+
+						// merge data metrics to clickhouse
+						mergo.Merge(&structedJson, metric, mergo.WithOverride, mergo.WithoutDereference)
+					}
+
+					// add log ID, log workspace
+					structedJson.Timestamp = timestamp
+					structedJson.Job = stream.Stream.Job
+					structedJson.Namespace = stream.Stream.Namespace
+					structedJson.NodeName = stream.Stream.NodeName
+					structedJson.Pod = stream.Stream.Pod
+					structedJson.App = stream.Stream.App
+					structedJson.Container = stream.Stream.Container
+					structedJson.Filename = stream.Stream.Filename
+
+					// push to structed json
+					lokiResp.Data.Result[i].StructedValues = append(lokiResp.Data.Result[i].StructedValues, structedJson)
+				}
 			}
 		}
 	} else {
@@ -114,7 +205,7 @@ func lokiParser(ctx context.Context, query string, startDate string, endDate str
 	}
 
 	// Prepare the batch insert statement
-	batch, err := conn.PrepareBatch(context.Background(), "INSERT INTO log_entry (timestamp, log, stream, time)")
+	batch, err := conn.PrepareBatch(context.Background(), "INSERT INTO log_entry (timestamp, job, namespace, node_name, pod, app, container, filename, stream, time, apiName, proxyResponseCode, destination, apiCreatorTenantDomain, platform, apiMethod, apiVersion, gatewayType, apiCreator, responseCacheHit, backendLatency, correlationId, requestMediationLatency, keyType, apiId, applicationName, targetResponseCode, requestTimestamp, applicationOwner, userAgent, eventType, apiResourceTemplate, regionId, responseLatency, responseMediationLatency, userIp, apiContext, applicationId, apiType)")
 	if err != nil {
 		log.Fatal("Error on prepare batch: ", err.Error())
 	}

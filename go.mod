@@ -5,6 +5,7 @@ go 1.25.3
 require github.com/ClickHouse/clickhouse-go/v2 v2.41.0
 
 require (
+	dario.cat/mergo v1.0.2
 	github.com/ClickHouse/ch-go v0.69.0 // indirect
 	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/go-faster/city v1.0.1 // indirect

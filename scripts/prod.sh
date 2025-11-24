@@ -11,6 +11,6 @@ export LOKI_LIMIT="100"
 export CLICKHOUSE_HOST="localhost:8123"
 export CLICKHOUSE_DATABASE="loki_log"
 export CLICKHOUSE_USER="default"
-export CLICKHOUSE_PASSWORD="default"
+export CLICKHOUSE_PASSWORD="MyStrongPassword123!"
 
 ./loki-scraper
