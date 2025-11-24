@@ -41,11 +41,20 @@ func main() {
 
 	// set extra query to fetch loki data
 	startDate = os.Getenv("LOKI_START_DATE")
+	if startDate == "" {
+		log.Println("LOKI_START_DATE is not exist in environment variable!")
+		return
+	}
 	endDate = os.Getenv("LOKI_END_DATE")
+	if endDate == "" {
+		log.Println("LOKI_START_DATE is not exist in environment variable!")
+		return
+	}
 
 	start, err := dateParse(startDate)
 	if err != nil {
-		log.Panicf("Error running loki scraper: %s", err.Error())
+		log.Printf("Error running loki scraper: %s", err.Error())
+		return
 	}
 
 	end, err := dateParse(endDate)

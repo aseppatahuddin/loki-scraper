@@ -1,20 +1,20 @@
-FROM golang:1.24.10-alpine AS builde
+FROM golang:1.24.10-alpine AS builder
 
 WORKDIR /loki-scraper
 
-COPY go.mod go.sum ./
-RUN go mod tidy
+COPY go.mod ./
+RUN go mod download
 
 COPY . .
 
 RUN CGO_ENABLED=0 GOOS=linux go build -o loki-scraper cmd/*.go
 
-FROM alpine:lates
+FROM alpine:latest
 
-WORKDIR /root/
+WORKDIR /loki-scraper/
 
-COPY --from=builder /app/main .
+COPY --from=builder /loki-scraper/loki-scraper .
 
-EXPOSE 8080
+# EXPOSE 9000 # TODO: expose HTTP controller later if needed
 
-CMD ["./main"]
+CMD ["./loki-scraper"]
