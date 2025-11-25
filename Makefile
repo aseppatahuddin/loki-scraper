@@ -1,5 +1,5 @@
 build:
-	@go build -o loki-scraper cmd/*.go
+	@CGO_ENABLED=0 go build -o loki-scraper cmd/*.go
 
 build-docker:
 	@docker build -t prakasa1904/loki-scraper:$(shell git rev-parse --short HEAD) .
