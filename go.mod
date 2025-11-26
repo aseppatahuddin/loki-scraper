@@ -2,7 +2,12 @@ module github.com/prakasa1904/loki-scraper
 
 go 1.25.3
 
-require github.com/ClickHouse/clickhouse-go/v2 v2.41.0
+require (
+	github.com/ClickHouse/clickhouse-go/v2 v2.41.0
+	moul.io/http2curl v1.0.0
+)
+
+require github.com/smartystreets/goconvey v1.8.1 // indirect
 
 require (
 	dario.cat/mergo v1.0.2

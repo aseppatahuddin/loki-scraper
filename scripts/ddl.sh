@@ -1,5 +1,3 @@
-#!/bin/bash
-
 CREATE TABLE loki_log.log_entry
 (
     timestamp String,

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"dario.cat/mergo"
+	"moul.io/http2curl"
 )
 
 type ExtendedLogEntry struct {
@@ -88,7 +89,7 @@ type LokiResponse struct {
 func setLimit() string {
 	var limit = os.Getenv("LOKI_LIMIT")
 	if limit == "" {
-		return "100"
+		return ""
 	}
 
 	return limit
@@ -109,7 +110,9 @@ func lokiParser(ctx context.Context, query string, startDate string, endDate str
 	q.Add("query", query)
 	q.Add("start", startDate)
 	q.Add("end", endDate)
-	q.Add("limit", setLimit())
+	if setLimit() != "" {
+		q.Add("limit", setLimit())
+	}
 	req.URL.RawQuery = q.Encode()
 
 	client := &http.Client{
@@ -120,6 +123,10 @@ func lokiParser(ctx context.Context, query string, startDate string, endDate str
 		return fmt.Errorf("error sending request: %s", err.Error())
 	}
 	defer resp.Body.Close()
+
+	// convert to curl
+	command, _ := http2curl.GetCurlCommand(req)
+	fmt.Println("Curl Format:", command)
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("loki API returned non-OK status: %s", resp.Status)
@@ -152,9 +159,6 @@ func lokiParser(ctx context.Context, query string, startDate string, endDate str
 				}
 
 				if containsAny(structedJson.Log) {
-					log.Println("structedJson.LogstructedJson.Log")
-					log.Println(structedJson.Log)
-					log.Println("structedJson.LogstructedJson.Log")
 					// cleanup log and filter parsing metrics
 					whitespaceClean := strings.Join(strings.Fields(structedJson.Log), " ")
 					rawArrayString := strings.Split(whitespaceClean, "Value:")
@@ -162,22 +166,24 @@ func lokiParser(ctx context.Context, query string, startDate string, endDate str
 					if len(rawArrayString) == 2 {
 						metricsValue = strings.TrimSpace(rawArrayString[1])
 
-						fmt.Println("metricsValuemetricsValuemetricsValue")
-						fmt.Println(metricsValue)
-						fmt.Println("metricsValuemetricsValuemetricsValue")
-
 						metric, err := ConvertToApiLog(metricsValue)
 						if err != nil {
 							log.Panicln(err.Error())
 						}
 
-						log.Printf("Data App ID: %s", metric.APIID)
-						log.Printf("Data Application ID: %s", metric.ApplicationID)
-						log.Printf("Data User Agent: %s", metric.UserAgent)
-						log.Printf("Data User IP: %s", metric.UserIP)
-
 						// merge data metrics to clickhouse
 						mergo.Merge(&structedJson, metric, mergo.WithOverride, mergo.WithoutDereference)
+
+						// convert date string from metric to date, and set to the database
+						// loc, _ := time.LoadLocation("Asia/Jakarta") // Uncommnet to set UTC+7
+						t, err := time.Parse(time.RFC3339, metric.RequestTimestamp)
+						if err != nil {
+							panic(err)
+						}
+
+						// tLocal := t.In(loc)        // Uncommnet to set UTC+7
+						// structedJson.Time = tLocal // Uncommnet to set UTC+7
+						structedJson.Time = t.UTC() // format to UTC
 					}
 
 					// add log ID, log workspace
