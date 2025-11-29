@@ -1,0 +1,47 @@
+name: Release Loki Parser Clickhouse Importer
+
+on:
+  release:
+    types: [created]
+  workflow_dispatch:
+
+jobs:
+  releases-matrix:
+    name: Release Matrix
+    runs-on: ubuntu-latest
+    permissions:
+          contents: write # Essential for creating releases
+    strategy:
+      matrix:
+        goos: [linux]
+        goarch: ["386", "arm", "amd64", "arm64"]
+        exclude:
+          - goarch: arm
+            goos: darwin
+          - goarch: "386"
+            goos: windows
+          - goarch: "386"
+            goos: darwin
+    steps:
+      - name: Get Release Info
+        run: |
+          echo "RELEASE_TAG=${GITHUB_REF/refs\/tags\//}" >> $GITHUB_ENV
+          echo "OS_NAME=${{ matrix.goos }}" >> $GITHUB_ENV
+
+      - name: OS darwin
+        if: matrix.goos == 'darwin'
+        run: echo "OS_NAME=macOS" >> $GITHUB_ENV
+
+      - uses: actions/checkout@v5
+
+      - uses: wangyoucao577/go-release-action@v1.53
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          md5sum: false
+          goversion: 1.24.9
+          goos: ${{ matrix.goos }}
+          goarch: ${{ matrix.goarch }}
+          build_command: make build
+          binary_name: loki-scraper-batch
+          asset_name: "loki-scraper-batch-${{ env.OS_NAME }}-${{ matrix.goarch }}"
+          compress_assets: false

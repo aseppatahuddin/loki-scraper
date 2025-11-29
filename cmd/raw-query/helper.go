@@ -4,15 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
-	"net/http"
 	"os"
 	"strings"
 	"time"
 
 	"dario.cat/mergo"
-	"moul.io/http2curl"
+	"github.com/prakasa1904/loki-scraper/internal/connection"
+	"github.com/prakasa1904/loki-scraper/internal/constants"
+	"github.com/prakasa1904/loki-scraper/internal/lokiclient"
+	"github.com/prakasa1904/loki-scraper/internal/lokiparser"
+	"github.com/prakasa1904/loki-scraper/internal/model"
 )
 
 type ExtendedLogEntry struct {
@@ -101,103 +103,65 @@ func lokiParser(ctx context.Context, query string, startDate string, endDate str
 		return fmt.Errorf("no Loki URL set from env LOKI_URL")
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "GET", LOKI_URL, nil)
-	if err != nil {
-		return fmt.Errorf("error creating request: %s", err.Error())
+	var CLICKHOUSE_TABLE = os.Getenv("CLICKHOUSE_TABLE")
+	if CLICKHOUSE_TABLE == "" {
+		return fmt.Errorf("no clickhouse table set from env variable.")
 	}
 
-	q := req.URL.Query()
-	q.Add("query", query)
-	q.Add("start", startDate)
-	q.Add("end", endDate)
-	if setLimit() != "" {
-		q.Add("limit", setLimit())
-	}
-	req.URL.RawQuery = q.Encode()
-
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("error sending request: %s", err.Error())
-	}
-	defer resp.Body.Close()
-
-	// convert to curl
-	command, _ := http2curl.GetCurlCommand(req)
-	fmt.Println("Curl Format:", command)
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("loki API returned non-OK status: %s", resp.Status)
-	}
-
-	log.Println("Start to receiving loki data from URL ", req.URL.String())
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("error reading response body %s", err.Error())
-	}
-
-	var lokiResp LokiResponse
-	err = json.Unmarshal(body, &lokiResp)
-	if err != nil {
-		return fmt.Errorf("error unmarshaling JSON: %s", err.Error())
-	}
+	lokiResp := lokiclient.QueryRaw(LOKI_URL, query, startDate, endDate, setLimit(), "")
 
 	// on success, formating data
 	if lokiResp.Status == "success" {
 		for i, stream := range lokiResp.Data.Result {
-			// log.Printf("Stream Labels: %v\n", stream.Stream)
 			for _, entry := range stream.RawValues {
 				timestamp, logLine := entry[0], entry[1]
 
-				var structedJson LogEntry
-				err := json.Unmarshal([]byte(logLine), &structedJson)
-				if err != nil {
+				// parse response
+				var structuredResponse model.LogEntry
+				if err := json.Unmarshal([]byte(logLine), &structuredResponse); err != nil {
 					return fmt.Errorf("parsing loki log error: %s", err.Error())
 				}
 
-				if containsAny(structedJson.Log) {
+				if lokiparser.IfLogContains(structuredResponse.Log, constants.FILTER_LOG) {
 					// cleanup log and filter parsing metrics
-					whitespaceClean := strings.Join(strings.Fields(structedJson.Log), " ")
+					whitespaceClean := strings.Join(strings.Fields(structuredResponse.Log), " ")
 					rawArrayString := strings.Split(whitespaceClean, "Value:")
 					var metricsValue string
 					if len(rawArrayString) == 2 {
 						metricsValue = strings.TrimSpace(rawArrayString[1])
 
-						metric, err := ConvertToApiLog(metricsValue)
+						metric, err := lokiparser.Parse(metricsValue)
 						if err != nil {
 							log.Panicln(err.Error())
 						}
 
 						// merge data metrics to clickhouse
-						mergo.Merge(&structedJson, metric, mergo.WithOverride, mergo.WithoutDereference)
+						mergo.Merge(&structuredResponse, metric, mergo.WithOverride, mergo.WithoutDereference)
 
 						// convert date string from metric to date, and set to the database
 						// loc, _ := time.LoadLocation("Asia/Jakarta") // Uncommnet to set UTC+7
 						t, err := time.Parse(time.RFC3339, metric.RequestTimestamp)
 						if err != nil {
-							panic(err)
+							log.Panicln(err.Error())
 						}
 
 						// tLocal := t.In(loc)        // Uncommnet to set UTC+7
-						// structedJson.Time = tLocal // Uncommnet to set UTC+7
-						structedJson.Time = t.UTC() // format to UTC
+						// structuredResponse.Time = tLocal // Uncommnet to set UTC+7
+						structuredResponse.Time = t.UTC() // format to UTC
 					}
 
 					// add log ID, log workspace
-					structedJson.Timestamp = timestamp
-					structedJson.Job = stream.Stream.Job
-					structedJson.Namespace = stream.Stream.Namespace
-					structedJson.NodeName = stream.Stream.NodeName
-					structedJson.Pod = stream.Stream.Pod
-					structedJson.App = stream.Stream.App
-					structedJson.Container = stream.Stream.Container
-					structedJson.Filename = stream.Stream.Filename
+					structuredResponse.Timestamp = timestamp
+					structuredResponse.Job = stream.Stream.Job
+					structuredResponse.Namespace = stream.Stream.Namespace
+					structuredResponse.NodeName = stream.Stream.NodeName
+					structuredResponse.Pod = stream.Stream.Pod
+					structuredResponse.App = stream.Stream.App
+					structuredResponse.Container = stream.Stream.Container
+					structuredResponse.Filename = stream.Stream.Filename
 
 					// push to structed json
-					lokiResp.Data.Result[i].StructedValues = append(lokiResp.Data.Result[i].StructedValues, structedJson)
+					lokiResp.Data.Result[i].StructedValues = append(lokiResp.Data.Result[i].StructedValues, structuredResponse)
 				}
 			}
 		}
@@ -205,13 +169,13 @@ func lokiParser(ctx context.Context, query string, startDate string, endDate str
 		return fmt.Errorf("loki API error: %s", lokiResp.Status)
 	}
 
-	conn, err := connect()
+	conn, err := connection.Connect()
 	if err != nil {
 		log.Panicln("Error DB connection: ", err.Error())
 	}
 
 	// Prepare the batch insert statement
-	batch, err := conn.PrepareBatch(context.Background(), "INSERT INTO log_entry (timestamp, job, namespace, node_name, pod, app, container, filename, stream, time, apiName, proxyResponseCode, destination, apiCreatorTenantDomain, platform, apiMethod, apiVersion, gatewayType, apiCreator, responseCacheHit, backendLatency, correlationId, requestMediationLatency, keyType, apiId, applicationName, targetResponseCode, requestTimestamp, applicationOwner, userAgent, eventType, apiResourceTemplate, regionId, responseLatency, responseMediationLatency, userIp, apiContext, applicationId, apiType)")
+	batch, err := conn.PrepareBatch(context.Background(), "INSERT INTO "+CLICKHOUSE_TABLE+" (timestamp, job, namespace, node_name, pod, app, container, filename, stream, time, apiName, proxyResponseCode, destination, apiCreatorTenantDomain, platform, apiMethod, apiVersion, gatewayType, apiCreator, responseCacheHit, backendLatency, correlationId, requestMediationLatency, keyType, apiId, applicationName, targetResponseCode, requestTimestamp, applicationOwner, userAgent, eventType, apiResourceTemplate, regionId, responseLatency, responseMediationLatency, userIp, apiContext, applicationId, apiType)")
 	if err != nil {
 		log.Fatal("Error on prepare batch: ", err.Error())
 	}

@@ -1,4 +1,4 @@
-package main
+package connection
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 )
 
-func connect() (driver.Conn, error) {
+func Connect() (driver.Conn, error) {
 	var host = os.Getenv("CLICKHOUSE_HOST")
 	var db = os.Getenv("CLICKHOUSE_DATABASE")
 	var user = os.Getenv("CLICKHOUSE_USER")
@@ -39,17 +39,17 @@ func connect() (driver.Conn, error) {
 		})
 	)
 
-	defer conn.Close()
+	// defer conn.Close()
 
 	if err != nil {
-		return nil, err
+		return conn, err
 	}
 
 	if err := conn.Ping(ctx); err != nil {
 		if exception, ok := err.(*clickhouse.Exception); ok {
 			fmt.Printf("Exception [%d] %s \n%s\n", exception.Code, exception.Message, exception.StackTrace)
 		}
-		return nil, err
+		return conn, err
 	}
 	return conn, nil
 }

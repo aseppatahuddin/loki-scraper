@@ -1,4 +1,3 @@
-package main
+package constants
 
-// LogCounterMetric
 var FILTER_LOG = []string{"LogCounterMetric"}

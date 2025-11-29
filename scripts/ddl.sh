@@ -1,4 +1,4 @@
-CREATE TABLE loki_log.log_entry
+CREATE TABLE loki_log.log_entry_dev
 (
     timestamp String,
     job String,

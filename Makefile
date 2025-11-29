@@ -1,5 +1,6 @@
 build:
-	@CGO_ENABLED=0 go build -o loki-scraper cmd/*.go
+	@CGO_ENABLED=0 go build -o loki-scraper cmd/raw-batch/*.go
+	@CGO_ENABLED=0 go build -o loki-scraper-batch cmd/n-to-now/*.go
 
 build-docker:
 	@docker build -t prakasa1904/loki-scraper:$(shell git rev-parse --short HEAD) .
