@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"time"
 
 	"github.com/prakasa1904/loki-scraper/internal/model"
@@ -72,9 +73,12 @@ func Query(lokiURL string, query string, start, end time.Time, limit int, direct
 	}
 	defer resp.Body.Close()
 
-	// convert to curl format for debuging purpose
-	// command, _ := http2curl.GetCurlCommand(resp.Request)
-	// fmt.Println("Curl Format:", command)
+	var LOKI_DEBUG = os.Getenv("LOKI_DEBUG")
+	if LOKI_DEBUG == "true" {
+		// convert to curl format for debuging purpose
+		command, _ := http2curl.GetCurlCommand(resp.Request)
+		fmt.Println("Curl Format:", command)
+	}
 
 	body, _ := io.ReadAll(resp.Body)
 
