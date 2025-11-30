@@ -114,12 +114,15 @@ func main() {
 				Timestamp string `json:"timestamp"`
 			}
 			if err := json.Unmarshal([]byte(line), &temp); err != nil {
-				log.Fatalf("Error unmarshaling outer JSON: %v", err)
+				log.Println("Error unmarshaling outer JSON:", err)
+				log.Println("Raw Data:", line)
+				continue
 			}
 
 			var entry model.LogEntry
 			if err := json.Unmarshal([]byte(temp.Line), &entry); err != nil {
 				log.Println("Error parsing JSON line: ", err.Error())
+				log.Println("Raw Data:", line)
 				continue
 			}
 
