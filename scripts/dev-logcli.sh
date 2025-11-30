@@ -6,6 +6,7 @@ export LOKI_QUERY="{container=\"splp-gw\"} |= \"LogCounterMetric\""
 export LOKI_START_DATE="2025-11-15T22:00:00Z"
 export LOKI_END_DATE="2025-11-15T22:01:00Z"
 export LOKI_LIMIT="100"
+export LOKI_DEBUG="true"
 
 # # Clickhouse config
 export CLICKHOUSE_HOST="localhost:8123"

@@ -21,6 +21,12 @@ import (
 )
 
 func main() {
+	debug := os.Getenv("LOKI_DEBUG")
+	if debug == "" {
+		log.Println("LOKI_DEBUG is not exist in environment variable!")
+		return
+	}
+
 	bin := os.Getenv("LOKI_BINARY")
 	if bin == "" {
 		log.Println("LOKI_BINARY is not exist in environment variable!")
@@ -139,6 +145,15 @@ func main() {
 						log.Fatal(err)
 					}
 				}
+			}
+
+			if debug == "true" {
+				log.Println("entry.Job: ", entry.Job)
+				log.Println("entry.Time: ", entry.Time)
+				log.Println("entry.APIType: ", entry.APIType)
+				log.Println("entry.UserAgent: ", entry.UserAgent)
+				log.Println("entry.Namespace: ", entry.Namespace)
+				log.Println("entry.APIContext: ", entry.APIContext)
 			}
 		}
 
