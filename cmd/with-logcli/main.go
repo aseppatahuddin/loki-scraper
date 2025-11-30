@@ -64,6 +64,13 @@ func main() {
 	cmd := exec.Command(bin, "query", "--limit", "0", "--batch", limit, "--output=jsonl", "--from", startDate, "--to", endDate, query)
 
 	// Create a pipe to read the standard output of the command
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		log.Fatalf("Error creating StdoutPipe: %v", err)
+	}
+	defer stderr.Close()
+
+	// Create a pipe to read the standard output of the command
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		log.Fatalf("Error creating StdoutPipe: %v", err)
@@ -84,6 +91,15 @@ func main() {
 	// Wait group to ensure the main function waits for the goroutine to finish.
 	var wg sync.WaitGroup
 	wg.Add(1)
+
+	go func() {
+		scannerError := bufio.NewScanner(stderr)
+		for scannerError.Scan() {
+			line := scannerError.Text()
+
+			log.Println("logcli error: ", line)
+		}
+	}()
 
 	go func() {
 		// Use a scanner to read the output line by line (each line is a JSON object)
@@ -143,6 +159,15 @@ func main() {
 					// Send the batch
 					if err := batch.Send(); err != nil {
 						log.Fatal(err)
+					}
+
+					if debug == "true" {
+						fmt.Println("Success save data: ", entry.Time)
+						fmt.Println("==========  DETAIL ==========")
+						fmt.Println("entry.UserAgent: ", entry.UserAgent)
+						fmt.Println("entry.APIContext: ", entry.APIContext)
+						fmt.Println("entry.BackendLatency: ", entry.BackendLatency)
+						fmt.Println("==========  DETAIL ==========")
 					}
 				}
 			}
