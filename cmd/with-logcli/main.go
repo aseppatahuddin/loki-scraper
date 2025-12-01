@@ -90,9 +90,10 @@ func main() {
 
 	// Wait group to ensure the main function waits for the goroutine to finish.
 	var wg sync.WaitGroup
-	wg.Add(1)
+	wg.Add(2)
 
 	go func() {
+		defer wg.Done()
 		scannerError := bufio.NewScanner(stderr)
 		for scannerError.Scan() {
 			line := scannerError.Text()
@@ -102,6 +103,7 @@ func main() {
 	}()
 
 	go func() {
+		defer wg.Done()
 		// Use a scanner to read the output line by line (each line is a JSON object)
 		scanner := bufio.NewScanner(stdout)
 		for scanner.Scan() {
