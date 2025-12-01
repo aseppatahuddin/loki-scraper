@@ -186,7 +186,7 @@ func main() {
 		}
 
 		if err := scanner.Err(); err != nil && err != io.EOF {
-			log.Fatalf("Error reading stdout: %v", err)
+			log.Println("Error reading stdout: ", err.Error())
 		}
 	}()
 
