@@ -12,7 +12,6 @@ import (
 
 	"dario.cat/mergo"
 	"github.com/prakasa1904/loki-scraper/internal/connection"
-	"github.com/prakasa1904/loki-scraper/internal/constants"
 	"github.com/prakasa1904/loki-scraper/internal/lokiclient"
 	"github.com/prakasa1904/loki-scraper/internal/lokiparser"
 	"github.com/prakasa1904/loki-scraper/internal/model"
@@ -111,7 +110,7 @@ func lokiParser(ctx context.Context, query string, startDate string, endDate str
 
 	var CLICKHOUSE_TABLE = os.Getenv("CLICKHOUSE_TABLE")
 	if CLICKHOUSE_TABLE == "" {
-		return fmt.Errorf("no clickhouse table set from env variable.")
+		return fmt.Errorf("no clickhouse table set from env variable CLICKHOUSE_TABLE")
 	}
 
 	start, _ := time.Parse(time.RFC3339, startDate)
@@ -153,54 +152,66 @@ func lokiParser(ctx context.Context, query string, startDate string, endDate str
 					// parse response
 					var structuredResponse model.LogEntry
 					if err := json.Unmarshal([]byte(logLine), &structuredResponse); err != nil {
-						return fmt.Errorf("parsing loki log error: %s", err.Error())
+						// ignore error parsing log line
+						continue
 					}
 
-					if lokiparser.IfLogContains(structuredResponse.Log, constants.FILTER_LOG) {
-						// cleanup log and filter parsing metrics
-						whitespaceClean := strings.Join(strings.Fields(structuredResponse.Log), " ")
-						rawArrayString := strings.Split(whitespaceClean, "Value:")
-						var metricsValue string
-						if len(rawArrayString) == 2 {
-							metricsValue = strings.TrimSpace(rawArrayString[1])
+					// cleanup log and filter parsing metrics
+					whitespaceClean := strings.Join(strings.Fields(structuredResponse.Log), " ")
+					rawArrayString := strings.Split(whitespaceClean, "Value:")
+					var metricsValue string
+					if len(rawArrayString) == 2 {
+						metricsValue = strings.TrimSpace(rawArrayString[1])
 
-							metric, err := lokiparser.Parse(metricsValue)
-							if err != nil {
-								log.Println("Error to parse loki metrics, with error: ", err.Error())
-							}
-
-							// merge data metrics to clickhouse
-							mergo.Merge(&structuredResponse, metric, mergo.WithOverride, mergo.WithoutDereference)
-
-							// convert date string from metric to date, and set to the database
-							// loc, _ := time.LoadLocation("Asia/Jakarta") // Uncommnet to set UTC+7
-							t, err := time.Parse(time.RFC3339, metric.RequestTimestamp)
-							if err != nil {
-								log.Println("Ignore error parsing time, with error: ", err.Error())
-							}
-
-							// tLocal := t.In(loc)        // Uncommnet to set UTC+7
-							// structuredResponse.Time = tLocal // Uncommnet to set UTC+7
-							structuredResponse.Time = t.UTC() // format to UTC
+						metric, err := lokiparser.Parse(metricsValue)
+						if err != nil {
+							log.Println("Error to parse loki metrics, with error: ", err.Error())
 						}
 
-						// add log ID, log workspace
-						structuredResponse.Timestamp = timestamp
-						structuredResponse.Job = stream.Stream.Job
-						structuredResponse.Namespace = stream.Stream.Namespace
-						structuredResponse.NodeName = stream.Stream.NodeName
-						structuredResponse.Pod = stream.Stream.Pod
-						structuredResponse.App = stream.Stream.App
-						structuredResponse.Container = stream.Stream.Container
-						structuredResponse.Filename = stream.Stream.Filename
+						// merge data metrics to clickhouse
+						mergo.Merge(&structuredResponse, metric, mergo.WithOverride, mergo.WithoutDereference)
 
-						// push to structed json
-						lokiResp.Data.Result[i].StructedValues = append(lokiResp.Data.Result[i].StructedValues, structuredResponse)
+						// convert date string from metric to date, and set to the database
+
+						ns, err := strconv.ParseInt(timestamp, 10, 64)
+						if err != nil {
+							// fallback: try parse float seconds
+							f, err2 := strconv.ParseFloat(timestamp, 64)
+							if err2 == nil {
+								ns = int64(f * 1e9)
+							} else {
+								// skip if cannot parse
+								continue
+							}
+						}
+
+						// parse with time.RFC3339, to follow clickhouse datetime format
+						t := time.Unix(0, ns)
+						parsedTime, err := time.Parse(time.RFC3339, t.Format(time.RFC3339))
+						if err != nil {
+							log.Println("Error parsing date:", err)
+							continue
+						}
+						structuredResponse.Time = parsedTime.UTC()
 					}
+
+					// add log ID, log workspace
+					structuredResponse.Timestamp = timestamp
+					structuredResponse.Job = stream.Stream.Job
+					structuredResponse.Namespace = stream.Stream.Namespace
+					structuredResponse.NodeName = stream.Stream.NodeName
+					structuredResponse.Pod = stream.Stream.Pod
+					structuredResponse.App = stream.Stream.App
+					structuredResponse.Container = stream.Stream.Container
+					structuredResponse.Filename = stream.Stream.Filename
+
+					// push to structed json
+					lokiResp.Data.Result[i].StructedValues = append(lokiResp.Data.Result[i].StructedValues, structuredResponse)
 				}
 			}
 		} else {
-			return fmt.Errorf("loki API error: %s", lokiResp.Status)
+			log.Println("loki API error: ", lokiResp.Status)
+			break
 		}
 
 		for _, results := range lokiResp.Data.Result {
@@ -217,11 +228,9 @@ func lokiParser(ctx context.Context, query string, startDate string, endDate str
 
 		// Send the batch
 		if err := batch.Send(); err != nil {
-			log.Fatal(err)
+			log.Fatalln("Failed to store data to Clickhose, error: ", err.Error())
 		}
 	}
-
-	log.Println("Successfully inserted data.")
 
 	return nil
 }
@@ -231,3 +240,17 @@ func timeFromLoki(ns string) time.Time {
 	n, _ := time.ParseDuration(ns + "ns")
 	return time.Unix(0, n.Nanoseconds())
 }
+
+// function to append string to file
+// func appendToFile(filename string, data string) error {
+// 	f, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	defer f.Close()
+
+// 	if _, err := f.WriteString(data + "\n"); err != nil {
+// 		return err
+// 	}
+// 	return nil
+// }

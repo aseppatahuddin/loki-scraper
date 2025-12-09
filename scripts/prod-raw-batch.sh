@@ -14,4 +14,4 @@ export CLICKHOUSE_TABLE="log_entry_dev"
 export CLICKHOUSE_USER="appuser"
 export CLICKHOUSE_PASSWORD="bintang123#"
 
-go run cmd/raw-batch/*.go
+./loki-scraper
