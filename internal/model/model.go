@@ -34,6 +34,23 @@ type ExtendedLogEntry struct {
 	APIType                  string `json:"apiType" ch:"apiType"`
 }
 
+type LogEntryFromFile struct {
+	Timestamp  string    `json:"timestamp" ch:"timestamp"`
+	Job        string    `json:"job" ch:"job"`
+	Namespace  string    `json:"namespace" ch:"namespace"`
+	NodeName   string    `json:"node_name" ch:"node_name"`
+	Pod        string    `json:"pod" ch:"pod"`
+	App        string    `json:"app" ch:"app"`
+	Container  string    `json:"container" ch:"container"`
+	Filename   string    `json:"filename" ch:"filename"`
+	Log        string    `json:"log"` // Skip raw data from clickhouse (hemat bebz...)
+	Stream     string    `json:"stream" ch:"stream"`
+	Time       time.Time `ch:"time"`
+	TimeString string    `json:"time"`
+	// extra data
+	ExtendedLogEntry
+}
+
 type LogEntry struct {
 	Timestamp string    `json:"timestamp" ch:"timestamp"`
 	Job       string    `json:"job" ch:"job"`
