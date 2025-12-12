@@ -1,3 +1,5 @@
+> New version release from https://github.com/devetek/loki-scraper
+
 ## Loki Data Migration
 
 Tools ini dapat digunakan dengan kubernetes pod ataupun kubernetes job. Berikut step-step cara menggunakan:
