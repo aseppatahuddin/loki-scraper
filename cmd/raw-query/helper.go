@@ -118,8 +118,11 @@ func lokiParser(ctx context.Context, query string, startDate string, endDate str
 
 				// parse response
 				var structuredResponse model.LogEntry
-				if err := json.Unmarshal([]byte(logLine), &structuredResponse); err != nil {
-					return fmt.Errorf("parsing loki log error: %s", err.Error())
+				if json.Valid([]byte(logLine)) {
+					_ = json.Unmarshal([]byte(logLine), &structuredResponse)
+				}
+				if structuredResponse.Log == "" {
+					structuredResponse.Log = logLine
 				}
 
 				if lokiparser.IfLogContains(structuredResponse.Log, constants.FILTER_LOG) {

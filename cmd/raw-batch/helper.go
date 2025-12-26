@@ -149,17 +149,19 @@ func lokiParser(ctx context.Context, query string, startDate string, endDate str
 				for _, entry := range stream.RawValues {
 					timestamp, logLine := entry[0], entry[1]
 
-					// parse response
-					var structuredResponse model.LogEntry
-					if err := json.Unmarshal([]byte(logLine), &structuredResponse); err != nil {
-						// ignore error parsing log line
-						continue
-					}
+				// parse response
+				var structuredResponse model.LogEntry
+				if json.Valid([]byte(logLine)) {
+					_ = json.Unmarshal([]byte(logLine), &structuredResponse)
+				}
+				if structuredResponse.Log == "" {
+					structuredResponse.Log = logLine
+				}
 
-					// cleanup log and filter parsing metrics
-					whitespaceClean := strings.Join(strings.Fields(structuredResponse.Log), " ")
-					rawArrayString := strings.Split(whitespaceClean, "Value:")
-					var metricsValue string
+				// cleanup log and filter parsing metrics
+				whitespaceClean := strings.Join(strings.Fields(structuredResponse.Log), " ")
+				rawArrayString := strings.Split(whitespaceClean, "Value:")
+				var metricsValue string
 					if len(rawArrayString) == 2 {
 						metricsValue = strings.TrimSpace(rawArrayString[1])
 

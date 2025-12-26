@@ -66,9 +66,11 @@ func processDay(dbConnection driver.Conn, lokiURL string, query string, limit in
 
 				// parse response
 				var structuredResponse model.LogEntry
-				if err := json.Unmarshal([]byte(logLine), &structuredResponse); err != nil {
-					log.Println("parsing loki log error: ", err.Error())
-					break
+				if json.Valid([]byte(logLine)) {
+					_ = json.Unmarshal([]byte(logLine), &structuredResponse)
+				}
+				if structuredResponse.Log == "" {
+					structuredResponse.Log = logLine
 				}
 
 				// format for specific logline, by check constants
