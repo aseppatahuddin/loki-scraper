@@ -1,7 +1,6 @@
 # binaries
 gdrive-parser
 loki-logcli
-loki-scraper
 loki-scraper-batch
 
 gdrive-credentials
