@@ -18,3 +18,4 @@ Buat kubernetes job, gunakan image yang kamu familiar. Download binary di `https
 
 1. Ubah query sesuai dengan kebutuhan, set limit jika diperlukan, pilih range waktu Loki yang akan di extract menggunakan environment variable.
 2. Jalankan perintah `./scripts/prod.sh`
+# asepdekatdenganteknologi
